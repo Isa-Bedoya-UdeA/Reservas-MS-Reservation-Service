@@ -1,0 +1,184 @@
+package com.codefactory.reservasmsreservationservice.client;
+
+import com.codefactory.reservasmsreservationservice.dto.request.CreateReservationBlockRequestDTO;
+import com.codefactory.reservasmsreservationservice.dto.response.EmployeeBasicInfoDTO;
+import com.codefactory.reservasmsreservationservice.exception.ExternalServiceException;
+import com.codefactory.reservasmsreservationservice.exception.ValidationException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.ResponseEntity;
+
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class ScheduleClientWrapperTest {
+
+    @Mock
+    private ScheduleClient scheduleClient;
+
+    @InjectMocks
+    private ScheduleClientWrapper scheduleClientWrapper;
+
+    private static final UUID TEST_EMPLOYEE_ID = UUID.randomUUID();
+    private static final UUID TEST_PROVIDER_ID = UUID.randomUUID();
+    private static final UUID TEST_RESERVATION_ID = UUID.randomUUID();
+
+    private EmployeeBasicInfoDTO employeeInfo;
+
+    @BeforeEach
+    void setUp() {
+        employeeInfo = EmployeeBasicInfoDTO.builder()
+                .id(TEST_EMPLOYEE_ID)
+                .fullName("Carlos Pérez")
+                .build();
+    }
+
+    @Nested
+    @DisplayName("validateEmployee")
+    class ValidateEmployeeTests {
+
+        @Test
+        @DisplayName("Debe validar empleado exitosamente")
+        void validateEmployee_ActiveEmployee_Success() {
+            when(scheduleClient.isEmployeeActive(TEST_EMPLOYEE_ID))
+                    .thenReturn(ResponseEntity.ok(true));
+
+            scheduleClientWrapper.validateEmployee(TEST_EMPLOYEE_ID);
+        }
+
+        @Test
+        @DisplayName("Debe lanzar ValidationException si empleado no está activo")
+        void validateEmployee_EmployeeInactive_ThrowsValidationException() {
+            when(scheduleClient.isEmployeeActive(TEST_EMPLOYEE_ID))
+                    .thenReturn(ResponseEntity.ok(false));
+
+            assertThatThrownBy(() -> scheduleClientWrapper.validateEmployee(TEST_EMPLOYEE_ID))
+                    .isInstanceOf(ValidationException.class);
+        }
+
+        @Test
+        @DisplayName("Debe lanzar ExternalServiceException si hay error de comunicación")
+        void validateEmployee_ExternalError_ThrowsExternalServiceException() {
+            when(scheduleClient.isEmployeeActive(TEST_EMPLOYEE_ID))
+                    .thenThrow(new RuntimeException("Connection timeout"));
+
+            assertThatThrownBy(() -> scheduleClientWrapper.validateEmployee(TEST_EMPLOYEE_ID))
+                    .isInstanceOf(ExternalServiceException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("getEmployeeProviderId")
+    class GetEmployeeProviderIdTests {
+
+        @Test
+        @DisplayName("Debe retornar ID de proveedor del empleado")
+        void getEmployeeProviderId_Success() {
+            when(scheduleClient.getEmployeeProviderId(TEST_EMPLOYEE_ID))
+                    .thenReturn(ResponseEntity.ok(TEST_PROVIDER_ID));
+
+            UUID result = scheduleClientWrapper.getEmployeeProviderId(TEST_EMPLOYEE_ID);
+
+            assertThat(result).isEqualTo(TEST_PROVIDER_ID);
+        }
+
+        @Test
+        @DisplayName("Debe lanzar ValidationException si no puede obtener provider ID")
+        void getEmployeeProviderId_NullResponse_ThrowsValidationException() {
+            when(scheduleClient.getEmployeeProviderId(TEST_EMPLOYEE_ID))
+                    .thenReturn(ResponseEntity.ok(null));
+
+            assertThatThrownBy(() -> scheduleClientWrapper.getEmployeeProviderId(TEST_EMPLOYEE_ID))
+                    .isInstanceOf(ExternalServiceException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("getEmployeeBasicInfo")
+    class GetEmployeeBasicInfoTests {
+
+        @Test
+        @DisplayName("Debe retornar información básica del empleado")
+        void getEmployeeBasicInfo_Success() {
+            when(scheduleClient.getEmployeeBasicInfo(TEST_EMPLOYEE_ID))
+                    .thenReturn(ResponseEntity.ok(employeeInfo));
+
+            EmployeeBasicInfoDTO result = scheduleClientWrapper.getEmployeeBasicInfo(TEST_EMPLOYEE_ID);
+
+            assertThat(result).isNotNull();
+            assertThat(result.getFullName()).isEqualTo("Carlos Pérez");
+        }
+
+        @Test
+        @DisplayName("Debe retornar null si no encuentra empleado")
+        void getEmployeeBasicInfo_NotFound_ReturnsNull() {
+            when(scheduleClient.getEmployeeBasicInfo(TEST_EMPLOYEE_ID))
+                    .thenReturn(ResponseEntity.ok(null));
+
+            EmployeeBasicInfoDTO result = scheduleClientWrapper.getEmployeeBasicInfo(TEST_EMPLOYEE_ID);
+
+            assertThat(result).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("createReservationBlock")
+    class CreateReservationBlockTests {
+
+        @Test
+        @DisplayName("Debe crear bloque de reserva exitosamente")
+        void createReservationBlock_Success() {
+            when(scheduleClient.createReservationBlock(any(CreateReservationBlockRequestDTO.class)))
+                    .thenReturn(ResponseEntity.ok().build());
+
+            scheduleClientWrapper.createReservationBlock(
+                    TEST_RESERVATION_ID, TEST_EMPLOYEE_ID, null, null, null);
+        }
+
+        @Test
+        @DisplayName("Debe no lanzar excepción si hay error de comunicación (no se propaga)")
+        void createReservationBlock_ExternalError_LogsButDoesNotThrow() {
+            doThrow(new RuntimeException("Connection timeout"))
+                    .when(scheduleClient).createReservationBlock(any(CreateReservationBlockRequestDTO.class));
+
+            // The method catches the exception and only logs - no exception propagated
+            scheduleClientWrapper.createReservationBlock(
+                    TEST_RESERVATION_ID, TEST_EMPLOYEE_ID, null, null, null);
+        }
+    }
+
+    @Nested
+    @DisplayName("cancelReservationBlock")
+    class CancelReservationBlockTests {
+
+        @Test
+        @DisplayName("Debe cancelar bloque de reserva exitosamente")
+        void cancelReservationBlock_Success() {
+            when(scheduleClient.cancelReservationBlock(TEST_RESERVATION_ID))
+                    .thenReturn(ResponseEntity.ok().build());
+
+            scheduleClientWrapper.cancelReservationBlock(TEST_RESERVATION_ID);
+        }
+
+        @Test
+        @DisplayName("Debe no lanzar excepción si hay error de comunicación (no se propaga)")
+        void cancelReservationBlock_ExternalError_LogsButDoesNotThrow() {
+            doThrow(new RuntimeException("Connection timeout"))
+                    .when(scheduleClient).cancelReservationBlock(TEST_RESERVATION_ID);
+
+            scheduleClientWrapper.cancelReservationBlock(TEST_RESERVATION_ID);
+        }
+    }
+}

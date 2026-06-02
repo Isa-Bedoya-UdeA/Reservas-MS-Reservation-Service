@@ -1,0 +1,108 @@
+package com.codefactory.reservasmsreservationservice.client;
+
+import com.codefactory.reservasmsreservationservice.dto.external.ExternalServiceDTO;
+import com.codefactory.reservasmsreservationservice.exception.ExternalServiceException;
+import com.codefactory.reservasmsreservationservice.exception.ValidationException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.ResponseEntity;
+
+import java.math.BigDecimal;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class CatalogClientWrapperTest {
+
+    @Mock
+    private CatalogClient catalogClient;
+
+    @InjectMocks
+    private CatalogClientWrapper catalogClientWrapper;
+
+    private static final UUID TEST_SERVICE_ID = UUID.randomUUID();
+    private static final UUID TEST_PROVIDER_ID = UUID.randomUUID();
+
+    private ExternalServiceDTO activeService;
+    private ExternalServiceDTO inactiveService;
+
+    @BeforeEach
+    void setUp() {
+        activeService = ExternalServiceDTO.builder()
+                .id(TEST_SERVICE_ID)
+                .nombreServicio("Corte de cabello")
+                .duracionMinutos(60)
+                .precio(BigDecimal.valueOf(25000))
+                .activo(true)
+                .idProveedor(TEST_PROVIDER_ID)
+                .build();
+
+        inactiveService = ExternalServiceDTO.builder()
+                .id(TEST_SERVICE_ID)
+                .nombreServicio("Corte especial")
+                .duracionMinutos(90)
+                .precio(BigDecimal.valueOf(50000))
+                .activo(false)
+                .idProveedor(TEST_PROVIDER_ID)
+                .build();
+    }
+
+    @Nested
+    @DisplayName("getServiceOrThrow")
+    class GetServiceOrThrowTests {
+
+        @Test
+        @DisplayName("Debe retornar servicio activo exitosamente")
+        void getServiceOrThrow_ActiveService_Success() {
+            when(catalogClient.getServiceById(TEST_SERVICE_ID))
+                    .thenReturn(ResponseEntity.ok(activeService));
+
+            ExternalServiceDTO result = catalogClientWrapper.getServiceOrThrow(TEST_SERVICE_ID);
+
+            assertThat(result).isNotNull();
+            assertThat(result.getActivo()).isTrue();
+            assertThat(result.getPrecio()).isEqualTo(BigDecimal.valueOf(25000));
+        }
+
+        @Test
+        @DisplayName("Debe lanzar ValidationException si servicio no existe")
+        void getServiceOrThrow_ServiceNotFound_ThrowsValidationException() {
+            when(catalogClient.getServiceById(TEST_SERVICE_ID))
+                    .thenReturn(ResponseEntity.ok(null));
+
+            assertThatThrownBy(() -> catalogClientWrapper.getServiceOrThrow(TEST_SERVICE_ID))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("servicio no encontrado");
+        }
+
+        @Test
+        @DisplayName("Debe lanzar ValidationException si servicio está inactivo")
+        void getServiceOrThrow_InactiveService_ThrowsValidationException() {
+            when(catalogClient.getServiceById(TEST_SERVICE_ID))
+                    .thenReturn(ResponseEntity.ok(inactiveService));
+
+            assertThatThrownBy(() -> catalogClientWrapper.getServiceOrThrow(TEST_SERVICE_ID))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("servicio no está disponible");
+        }
+
+        @Test
+        @DisplayName("Debe lanzar ExternalServiceException si hay error de comunicación")
+        void getServiceOrThrow_ExternalError_ThrowsExternalServiceException() {
+            when(catalogClient.getServiceById(TEST_SERVICE_ID))
+                    .thenThrow(new RuntimeException("Connection timeout"));
+
+            assertThatThrownBy(() -> catalogClientWrapper.getServiceOrThrow(TEST_SERVICE_ID))
+                    .isInstanceOf(ExternalServiceException.class);
+        }
+    }
+}

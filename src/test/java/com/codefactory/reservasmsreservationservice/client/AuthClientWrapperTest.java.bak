@@ -1,0 +1,155 @@
+package com.codefactory.reservasmsreservationservice.client;
+
+import com.codefactory.reservasmsreservationservice.dto.external.ExternalClientDTO;
+import com.codefactory.reservasmsreservationservice.dto.external.ExternalProviderDTO;
+import com.codefactory.reservasmsreservationservice.exception.ExternalServiceException;
+import com.codefactory.reservasmsreservationservice.exception.ValidationException;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.ResponseEntity;
+
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class AuthClientWrapperTest {
+
+    @Mock
+    private AuthClient authClient;
+
+    @InjectMocks
+    private AuthClientWrapper authClientWrapper;
+
+    private static final UUID TEST_CLIENT_ID = UUID.randomUUID();
+    private static final UUID TEST_PROVIDER_ID = UUID.randomUUID();
+
+    private ExternalClientDTO activeClient;
+    private ExternalClientDTO inactiveClient;
+    private ExternalProviderDTO activeProvider;
+
+    @BeforeEach
+    void setUp() {
+        activeClient = ExternalClientDTO.builder()
+                .id(TEST_CLIENT_ID)
+                .nombre("Juan Pérez")
+                .email("juan@test.com")
+                .activo(true)
+                .build();
+
+        inactiveClient = ExternalClientDTO.builder()
+                .id(TEST_CLIENT_ID)
+                .nombre("Juan Pérez")
+                .email("juan@test.com")
+                .activo(false)
+                .build();
+
+        activeProvider = ExternalProviderDTO.builder()
+                .id(TEST_PROVIDER_ID)
+                .nombreComercial("Barbería Test")
+                .email("barberia@test.com")
+                .activo(true)
+                .build();
+    }
+
+    @Nested
+    @DisplayName("getClientOrThrow")
+    class GetClientOrThrowTests {
+
+        @Test
+        @DisplayName("Debe retornar cliente activo exitosamente")
+        void getClientOrThrow_ActiveClient_Success() {
+            when(authClient.getClientById(TEST_CLIENT_ID))
+                    .thenReturn(ResponseEntity.ok(activeClient));
+
+            ExternalClientDTO result = authClientWrapper.getClientOrThrow(TEST_CLIENT_ID);
+
+            assertThat(result).isNotNull();
+            assertThat(result.isActivo()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Debe lanzar ValidationException si cliente no existe")
+        void getClientOrThrow_ClientNotFound_ThrowsValidationException() {
+            when(authClient.getClientById(TEST_CLIENT_ID))
+                    .thenReturn(ResponseEntity.ok(null));
+
+            assertThatThrownBy(() -> authClientWrapper.getClientOrThrow(TEST_CLIENT_ID))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("Cliente no encontrado");
+        }
+
+        @Test
+        @DisplayName("Debe lanzar ValidationException si cliente está inactivo")
+        void getClientOrThrow_InactiveClient_ThrowsValidationException() {
+            when(authClient.getClientById(TEST_CLIENT_ID))
+                    .thenReturn(ResponseEntity.ok(inactiveClient));
+
+            assertThatThrownBy(() -> authClientWrapper.getClientOrThrow(TEST_CLIENT_ID))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("cliente no está activo");
+        }
+
+        @Test
+        @DisplayName("Debe lanzar ExternalServiceException si hay error de comunicación")
+        void getClientOrThrow_ExternalError_ThrowsExternalServiceException() {
+            when(authClient.getClientById(TEST_CLIENT_ID))
+                    .thenThrow(new RuntimeException("Connection timeout"));
+
+            assertThatThrownBy(() -> authClientWrapper.getClientOrThrow(TEST_CLIENT_ID))
+                    .isInstanceOf(ExternalServiceException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("getProviderOrThrow")
+    class GetProviderOrThrowTests {
+
+        @Test
+        @DisplayName("Debe retornar proveedor activo exitosamente")
+        void getProviderOrThrow_ActiveProvider_Success() {
+            when(authClient.getProviderById(TEST_PROVIDER_ID))
+                    .thenReturn(ResponseEntity.ok(activeProvider));
+
+            ExternalProviderDTO result = authClientWrapper.getProviderOrThrow(TEST_PROVIDER_ID);
+
+            assertThat(result).isNotNull();
+            assertThat(result.isActivo()).isTrue();
+        }
+
+        @Test
+        @DisplayName("Debe lanzar ValidationException si proveedor no existe")
+        void getProviderOrThrow_ProviderNotFound_ThrowsValidationException() {
+            when(authClient.getProviderById(TEST_PROVIDER_ID))
+                    .thenReturn(ResponseEntity.ok(null));
+
+            assertThatThrownBy(() -> authClientWrapper.getProviderOrThrow(TEST_PROVIDER_ID))
+                    .isInstanceOf(ValidationException.class);
+        }
+
+        @Test
+        @DisplayName("Debe lanzar ValidationException si proveedor está inactivo")
+        void getProviderOrThrow_InactiveProvider_ThrowsValidationException() {
+            ExternalProviderDTO inactiveProvider = ExternalProviderDTO.builder()
+                    .id(TEST_PROVIDER_ID)
+                    .nombreComercial("Barbería Test")
+                    .activo(false)
+                    .build();
+
+            when(authClient.getProviderById(TEST_PROVIDER_ID))
+                    .thenReturn(ResponseEntity.ok(inactiveProvider));
+
+            assertThatThrownBy(() -> authClientWrapper.getProviderOrThrow(TEST_PROVIDER_ID))
+                    .isInstanceOf(ValidationException.class)
+                    .hasMessageContaining("proveedor no está activo");
+        }
+    }
+}

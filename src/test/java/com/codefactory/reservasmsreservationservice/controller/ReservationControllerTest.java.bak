@@ -1,0 +1,220 @@
+package com.codefactory.reservasmsreservationservice.controller;
+
+import com.codefactory.reservasmsreservationservice.dto.request.CancelReservationRequestDTO;
+import com.codefactory.reservasmsreservationservice.dto.request.ChangeReservationStatusRequestDTO;
+import com.codefactory.reservasmsreservationservice.dto.request.CreateReservationRequestDTO;
+import com.codefactory.reservasmsreservationservice.dto.request.UpdateReservationRequestDTO;
+import com.codefactory.reservasmsreservationservice.dto.response.ReservationListResponseDTO;
+import com.codefactory.reservasmsreservationservice.dto.response.ReservationResponseDTO;
+import com.codefactory.reservasmsreservationservice.exception.GlobalExceptionHandler;
+import com.codefactory.reservasmsreservationservice.security.JwtAuthenticationEntryPoint;
+import com.codefactory.reservasmsreservationservice.security.JwtAuthenticationFilter;
+import com.codefactory.reservasmsreservationservice.security.JwtService;
+import com.codefactory.reservasmsreservationservice.service.ReservationService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
+import java.util.UUID;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@WebMvcTest(controllers = ReservationController.class)
+@Import(GlobalExceptionHandler.class)
+@AutoConfigureMockMvc(addFilters = false)
+class ReservationControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @MockBean
+    private ReservationService reservationService;
+
+    @MockBean
+    private JwtService jwtService;
+
+    @MockBean
+    private JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    @MockBean
+    private JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
+
+    @MockBean
+    private UserDetailsService userDetailsService;
+
+    private static final UUID TEST_CLIENT_ID = UUID.randomUUID();
+    private static final UUID TEST_RESERVATION_ID = UUID.randomUUID();
+    private static final UUID TEST_EMPLOYEE_ID = UUID.randomUUID();
+    private static final UUID TEST_SERVICE_ID = UUID.randomUUID();
+
+    @Nested
+    @DisplayName("POST /api/reservations")
+    class CreateReservationTests {
+
+        @Test
+        @DisplayName("Debe crear reserva exitosamente")
+        void createReservation_Success() throws Exception {
+            CreateReservationRequestDTO request = CreateReservationRequestDTO.builder()
+                    .idServicio(TEST_SERVICE_ID)
+                    .idEmpleado(TEST_EMPLOYEE_ID)
+                    .fechaHoraInicio("2026-06-10T10:00:00Z")
+                    .build();
+
+            ReservationResponseDTO response = ReservationResponseDTO.builder()
+                    .idReserva(TEST_RESERVATION_ID)
+                    .clienteNombre("Juan Pérez")
+                    .build();
+
+            when(reservationService.createReservation(any(UUID.class), any(CreateReservationRequestDTO.class)))
+                    .thenReturn(response);
+
+            mockMvc.perform(post("/api/reservations")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.idReserva").value(TEST_RESERVATION_ID.toString()));
+        }
+    }
+
+    @Nested
+    @DisplayName("GET /api/reservations/{id}")
+    class GetReservationByIdTests {
+
+        @Test
+        @DisplayName("Debe obtener reserva por ID")
+        void getReservationById_Success() throws Exception {
+            ReservationResponseDTO response = ReservationResponseDTO.builder()
+                    .idReserva(TEST_RESERVATION_ID)
+                    .clienteNombre("Juan Pérez")
+                    .build();
+
+            when(reservationService.getReservationById(TEST_RESERVATION_ID)).thenReturn(response);
+
+            mockMvc.perform(get("/api/reservations/" + TEST_RESERVATION_ID))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.idReserva").value(TEST_RESERVATION_ID.toString()));
+        }
+    }
+
+    @Nested
+    @DisplayName("PUT /api/reservations/{id}")
+    class UpdateReservationTests {
+
+        @Test
+        @DisplayName("Debe actualizar reserva exitosamente")
+        void updateReservation_Success() throws Exception {
+            UpdateReservationRequestDTO request = UpdateReservationRequestDTO.builder()
+                    .fechaHoraInicio("2026-06-11T10:00:00Z")
+                    .comentarios("Cambio de horario")
+                    .build();
+
+            ReservationResponseDTO response = ReservationResponseDTO.builder()
+                    .idReserva(TEST_RESERVATION_ID)
+                    .build();
+
+            when(reservationService.updateReservation(any(UUID.class), eq(TEST_RESERVATION_ID), any(UpdateReservationRequestDTO.class)))
+                    .thenReturn(response);
+
+            mockMvc.perform(put("/api/reservations/" + TEST_RESERVATION_ID)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk());
+        }
+    }
+
+    @Nested
+    @DisplayName("PATCH /api/reservations/{id}/status")
+    class ChangeReservationStatusTests {
+
+        @Test
+        @DisplayName("Debe cambiar estado de reserva exitosamente")
+        void changeReservationStatus_Success() throws Exception {
+            ChangeReservationStatusRequestDTO request = ChangeReservationStatusRequestDTO.builder()
+                    .estado("COMPLETADA")
+                    .build();
+
+            ReservationResponseDTO response = ReservationResponseDTO.builder()
+                    .idReserva(TEST_RESERVATION_ID)
+                    .estado("COMPLETADA")
+                    .build();
+
+            when(reservationService.changeReservationStatus(eq(TEST_RESERVATION_ID), any(ChangeReservationStatusRequestDTO.class)))
+                    .thenReturn(response);
+
+            mockMvc.perform(patch("/api/reservations/" + TEST_RESERVATION_ID + "/status")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.estado").value("COMPLETADA"));
+        }
+    }
+
+    @Nested
+    @DisplayName("DELETE /api/reservations/{id}")
+    class CancelReservationTests {
+
+        @Test
+        @DisplayName("Debe cancelar reserva exitosamente")
+        void cancelReservation_Success() throws Exception {
+            CancelReservationRequestDTO request = CancelReservationRequestDTO.builder()
+                    .comentariosCancelacion("Cliente canceló")
+                    .build();
+
+            ReservationResponseDTO response = ReservationResponseDTO.builder()
+                    .idReserva(TEST_RESERVATION_ID)
+                    .estado("CANCELADA")
+                    .build();
+
+            when(reservationService.cancelReservation(any(UUID.class), eq(TEST_RESERVATION_ID), any()))
+                    .thenReturn(response);
+
+            mockMvc.perform(delete("/api/reservations/" + TEST_RESERVATION_ID)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(request)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.estado").value("CANCELADA"));
+        }
+    }
+
+    @Nested
+    @DisplayName("GET /api/reservations/employee/{employeeId}")
+    class GetEmployeeReservationsTests {
+
+        @Test
+        @DisplayName("Debe obtener reservas de un empleado")
+        void getEmployeeReservations_ReturnsList() throws Exception {
+            ReservationResponseDTO reserva = ReservationResponseDTO.builder()
+                    .idReserva(TEST_RESERVATION_ID)
+                    .clienteNombre("Juan Pérez")
+                    .build();
+
+            ReservationListResponseDTO listResponse = ReservationListResponseDTO.builder()
+                    .reservas(List.of(reserva))
+                    .total(1)
+                    .build();
+
+            when(reservationService.getReservationsByEmployee(any(UUID.class), any(), eq(0), eq(10)))
+                    .thenReturn(listResponse);
+
+            mockMvc.perform(get("/api/reservations/employee/" + TEST_EMPLOYEE_ID))
+                    .andExpect(status().isOk());
+        }
+    }
+}
